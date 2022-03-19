@@ -13,6 +13,13 @@ Currently coordinates to look for items are hardcoded, therefore will probably w
 
 Tested on 2560x1440.
 
+21:9 might work with changes in `snap/__init__.py`
+
+    self._row_height = 76
+    self._items_location = {'x': 450, 'y': 275, 'width': 300, 'height': self._row_height}
+    self._prices_location = {'x': 850, 'y': 275, 'width': 213, 'height': self._row_height}
+
+
 Market window needs to be moved to the top-left corner, then search for the items you are interested in.
 Run snap.py and ALT-TAB quickly to the game window. The script will make a beep sound, which means the screenshot has been captured.
 After a second the script will try to recognize items (OCR) and will beep 10 times. High beep means, an item has been recognized. Low beep means that item has not been recognized.

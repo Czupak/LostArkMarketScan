@@ -6,6 +6,9 @@ name = "pypi"
 [packages]
 PyAutoGUI = "*"
 pytesseract = "*"
+matplotlib = "*"
+mpld3 = "*"
+opencv-python = "*"
 
 [dev-packages]
 

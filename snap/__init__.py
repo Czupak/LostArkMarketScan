@@ -3,6 +3,8 @@ import time
 import datetime
 import pyautogui
 import pytesseract
+import cv2 as cv
+import numpy as np
 import winsound
 import sqlite3
 
@@ -109,11 +111,15 @@ class OutPrint:
 
 
 class Snap:
-    def __init__(self, scans=1, outputs=None, tesseract_cmd=None, tmp_dir=None):
+    def __init__(self, outputs=None, tesseract_cmd=None, tmp_dir=None):
+        self.key_terminate = 'Num Lock'
+        self.key_snapshot = 'Scroll Lock'
         self._outputs = outputs or (OutPrint())
         self._tesseract_cmd = tesseract_cmd
         self.tmp_dir = tmp_dir or 'tmp'
-        self.scans = scans
+        # self._row_height = 57
+        # self._items_location = {'x': 340, 'y': 275 + 110, 'width': 300, 'height': self._row_height}
+        # self._prices_location = {'x': 645, 'y': 275 + 110, 'width': 150, 'height': self._row_height}
         self._row_height = 76
         self._items_location = {'x': 450, 'y': 275, 'width': 300, 'height': self._row_height}
         self._prices_location = {'x': 850, 'y': 275, 'width': 213, 'height': self._row_height}
@@ -125,9 +131,50 @@ class Snap:
             os.mkdir(self.tmp_dir)
         pytesseract.pytesseract.tesseract_cmd = self._tesseract_cmd
 
+    def get_key_state(self, state):
+        import ctypes
+        hllDll = ctypes.WinDLL("User32.dll")
+        states = {
+            'Scroll Lock': 0x91,
+            'Num Lock': 0x90,
+            'Caps Lock': 0x14,
+        }
+        return hllDll.GetKeyState(states[state])
+
+    def image_noise_reduction(self, file):
+        img = cv.imread(file, 0)
+        blur = cv.GaussianBlur(img, (5, 5), 0)
+        # find normalized_histogram, and its cumulative distribution function
+        hist = cv.calcHist([blur], [0], None, [256], [0, 256])
+        hist_norm = hist.ravel() / hist.sum()
+        Q = hist_norm.cumsum()
+        bins = np.arange(256)
+        fn_min = np.inf
+        thresh = -1
+        for i in range(1, 256):
+            p1, p2 = np.hsplit(hist_norm, [i])  # probabilities
+            q1, q2 = Q[i], Q[255] - Q[i]  # cum sum of classes
+            if q1 < 1.e-6 or q2 < 1.e-6:
+                continue
+            b1, b2 = np.hsplit(bins, [i])  # weights
+            # finding means and variances
+            m1, m2 = np.sum(p1 * b1) / q1, np.sum(p2 * b2) / q2
+            v1, v2 = np.sum(((b1 - m1) ** 2) * p1) / q1, np.sum(((b2 - m2) ** 2) * p2) / q2
+            # calculates the minimization function
+            fn = v1 * q1 + v2 * q2
+            if fn < fn_min:
+                fn_min = fn
+                thresh = i
+        # find otsu's threshold value with OpenCV function
+        ret, otsu = cv.threshold(blur, 0, 255, cv.THRESH_BINARY + cv.THRESH_OTSU)
+        print("{} {}".format(thresh, ret))
+        return otsu
+
     def _snap(self):
         image_org = pyautogui.screenshot()
         image_org.save(f"{self.tmp_dir}/image.png")
+        # from PIL import Image
+        # image_org = Image.open(f'{self.tmp_dir}/image.png')
         winsound.Beep(440, 500)
         raw_data = []
         for a in range(10):
@@ -144,9 +191,27 @@ class Snap:
             image2 = image_org.crop((x1, y1, x2, y2))
 
             image = image.convert("L")
-            image2 = image2.convert("L")
+            # image2 = image2.convert("L")
             image.save(f"{self.tmp_dir}/image{a}_name.png")
             image2.save(f"{self.tmp_dir}/image{a}_price.png")
+
+            # n = self.image_noise_reduction(f"{self.tmp_dir}/image{a}_name.png")
+            # p = self.image_noise_reduction(f"{self.tmp_dir}/image{a}_price.png")
+            # cv.imwrite(f"{self.tmp_dir}/image{a}_ns_name.png", n)
+            # cv.imwrite(f"{self.tmp_dir}/image{a}_ns_price.png", p)
+
+            # cv_img = cv.imread(f"{self.tmp_dir}/image{a}_name.png")
+            # cv_img = cv.medianBlur(cv_img, 5)
+            # ret, thresh1 = cv.threshold(cv_img, 127, 255, cv.THRESH_TRUNC)
+            # cv.imwrite(f'{self.tmp_dir}/cv_{a}_image.png', thresh1)
+            # cv.imwrite(f'{self.tmp_dir}/cv_{a}_image_ret.png', ret)
+            #
+            # cv_img = cv.imread(f"{self.tmp_dir}/image{a}_price.png")
+            # cv_img = cv.medianBlur(cv_img, 5)
+            # ret, thresh1 = cv.threshold(cv_img, 127, 255, cv.THRESH_TRUNC)
+            # cv.imwrite(f'{self.tmp_dir}/cv_{a}_price.png', thresh1)
+            # cv.imwrite(f'{self.tmp_dir}/cv_{a}_price_ret.png', ret)
+
             result = pytesseract.image_to_string(image, lang='eng', config='')
             result2 = pytesseract.image_to_string(image2, config='-c tessedit_char_whitelist=0123456789@')
 
@@ -181,10 +246,24 @@ class Snap:
                     new_entry = False
 
     def run(self):
-        time.sleep(2)
-        for i in range(self.scans):
-            self._snap()
-        self._parse()
+        winsound.Beep(640, 200)
+        snap_key_state = self.get_key_state(self.key_snapshot)
+        end_key_state = self.get_key_state(self.key_terminate)
+        new_end_key_state = end_key_state
+        print(f'Awaiting command: [Screenshot: {self.key_snapshot}] [Save and quit: {self.key_terminate}]')
+        while end_key_state == new_end_key_state:
+            new_snap_key_state = self.get_key_state(self.key_snapshot)
+            new_end_key_state = self.get_key_state(self.key_terminate)
+            if snap_key_state != new_snap_key_state:
+                snap_key_state = new_snap_key_state
+                print(f"[{self.key_snapshot}] detected, taking screenshot...")
+                self._snap()
+                self._parse()
+                self.save()
+            time.sleep(0.2)
+        winsound.Beep(640, 100)
+        winsound.Beep(640, 100)
+        print(f"[{self.key_terminate}] detected, terminating...")
 
     def get_data(self):
         return self.data

@@ -42,8 +42,9 @@ class OutSQLite:
                 quantity INTEGER,
                 cost FLOAT,
                 cost_per_one FLOAT,
+                tag TEXT,
                 FOREIGN KEY(item_id) REFERENCES items(item_id),
-                UNIQUE(item_id))''',
+                UNIQUE(item_id, tag))''',
             'mats':
                 '''CREATE TABLE mats (
                 mat_id INTEGER PRIMARY KEY AUTOINCREMENT,

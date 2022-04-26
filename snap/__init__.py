@@ -10,6 +10,7 @@ import sqlite3
 
 
 class OutSQLite:
+
     def __init__(self, db_name=None):
         self.db_name = db_name or 'snap.db'
         self._db = None
@@ -17,21 +18,25 @@ class OutSQLite:
         self.setup()
 
     def setup(self):
-        tables = {'items': '''CREATE TABLE items (
+        tables = {
+            'items':
+                '''CREATE TABLE items (
                 item_id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name VARCHAR(100),
                 bundle INTEGER,
                 price FLOAT,
                 price_per_one FLOAT,
                 UNIQUE(name))''',
-                  'prices': '''CREATE TABLE prices (
+            'prices':
+                '''CREATE TABLE prices (
                 price_id INTEGER PRIMARY KEY AUTOINCREMENT,
                 item_id INTEGER,
                 date DATE,
                 price FLOAT,
                 FOREIGN KEY(item_id) REFERENCES items(item_id),
                 UNIQUE(item_id, date))''',
-                  'crafts': '''CREATE TABLE crafts (
+            'crafts':
+                '''CREATE TABLE crafts (
                 craft_id INTEGER PRIMARY KEY AUTOINCREMENT,
                 item_id INTEGER,
                 quantity INTEGER,
@@ -39,7 +44,8 @@ class OutSQLite:
                 cost_per_one FLOAT,
                 FOREIGN KEY(item_id) REFERENCES items(item_id),
                 UNIQUE(item_id))''',
-                  'mats': '''CREATE TABLE mats (
+            'mats':
+                '''CREATE TABLE mats (
                 mat_id INTEGER PRIMARY KEY AUTOINCREMENT,
                 craft_id INTEGER,
                 item_id INTEGER,
@@ -47,18 +53,26 @@ class OutSQLite:
                 FOREIGN KEY(craft_id) REFERENCES crafts(craft_id),
                 FOREIGN KEY(item_id) REFERENCES items(item_id),
                 UNIQUE(craft_id, item_id))''',
-                  'prices_history_v': 'CREATE OR UPDATE VIEW prices_history_v AS '
-                                      'SELECT i.name, i.bundle, p.date, p.price FROM items i '
-                                      'LEFT JOIN prices p ON i.item_id = p.item_id '
-                                      'ORDER BY i.name, p.date'
-                  }
+            'prices_history_v': [
+                'DROP VIEW IF EXISTS prices_history_v',
+                '''CREATE VIEW prices_history_v AS 
+               SELECT i.name, i.bundle, p.date, p.price FROM items i
+               LEFT JOIN prices p ON i.item_id = p.item_id
+               ORDER BY i.name, p.date'''
+            ]
+        }
         self._db = sqlite3.connect(self.db_name)
-        res = self._db.execute("SELECT name FROM sqlite_master WHERE type in ('table', 'view')")
+        res = self._db.execute(
+            "SELECT name FROM sqlite_master WHERE type in ('table')")
         db_tables = [row[0] for row in res]
         for table in tables.keys():
             if table not in db_tables:
                 print(f"[{self.name}] Creating {table}")
-                self._db.execute(tables[table])
+                queries = tables[table]
+                if type(queries) != list:
+                    queries = [queries]
+                for query in queries:
+                    self._db.execute(query)
 
         self._db.commit()
 
@@ -66,20 +80,28 @@ class OutSQLite:
         db = sqlite3.connect(self.db_name)
         cursor = db.cursor()
         for row in data:
-            query = ('INSERT INTO items (name, bundle, price, price_per_one)'
-                     'VALUES (?, ?, ?, ?) ON CONFLICT(name) DO UPDATE SET price = ?, price_per_one = ?')
-            cursor.execute(query, (
-                row['name'], row['bundle'], row['price'], row['price_per_one'], row['price'], row['price_per_one']))
-            res = cursor.execute('SELECT item_id FROM items WHERE name = ?', (row['name'],))
+            query = (
+                'INSERT INTO items (name, bundle, price, price_per_one)'
+                'VALUES (?, ?, ?, ?) ON CONFLICT(name) DO UPDATE SET price = ?, price_per_one = ?'
+            )
+            cursor.execute(
+                query,
+                (row['name'], row['bundle'], row['price'], row['price_per_one'],
+                 row['price'], row['price_per_one']))
+            res = cursor.execute('SELECT item_id FROM items WHERE name = ?',
+                                 (row['name'],))
             last_insert_id = res.fetchone()[0]
             date = datetime.date.today().strftime("%Y-%m-%d")
-            query = ('INSERT INTO prices (item_id, date, price) VALUES (?, ?, ?)'
-                     'ON CONFLICT(item_id, date) DO UPDATE SET price = ?')
-            cursor.execute(query, (last_insert_id, date, row['price'], row['price']))
+            query = (
+                'INSERT INTO prices (item_id, date, price) VALUES (?, ?, ?)'
+                'ON CONFLICT(item_id, date) DO UPDATE SET price = ?')
+            cursor.execute(query,
+                           (last_insert_id, date, row['price'], row['price']))
             db.commit()
 
 
 class OutCSV:
+
     def __init__(self, file_name=None):
         self.name = 'OutCSV'
         self.file_name = file_name or 'snap.csv'
@@ -93,10 +115,12 @@ class OutCSV:
                 if 'bundle' in row:
                     bundle = row['bundle']
                     price_per_one = row['price_per_one']
-                fh.write(f"{row['name']},{bundle},{row['price']},{price_per_one}\n")
+                fh.write(
+                    f"{row['name']},{bundle},{row['price']},{price_per_one}\n")
 
 
 class OutPrint:
+
     def __init__(self):
         self.name = 'OutPrint'
 
@@ -107,10 +131,13 @@ class OutPrint:
             if 'bundle' in row:
                 bundle = row['bundle']
                 price_per_one = row['price_per_one']
-            print(f"[{self.name}] {row['name']}: {row['price']}/{bundle}={price_per_one}")
+            print(
+                f"[{self.name}] {row['name']}: {row['price']}/{bundle}={price_per_one}"
+            )
 
 
 class Snap:
+
     def __init__(self, outputs=None, tesseract_cmd=None, tmp_dir=None):
         self.key_terminate = 'Num Lock'
         self.key_snapshot = 'Scroll Lock'
@@ -121,8 +148,18 @@ class Snap:
         # self._items_location = {'x': 340, 'y': 275 + 110, 'width': 300, 'height': self._row_height}
         # self._prices_location = {'x': 645, 'y': 275 + 110, 'width': 150, 'height': self._row_height}
         self._row_height = 76
-        self._items_location = {'x': 450, 'y': 275, 'width': 300, 'height': self._row_height}
-        self._prices_location = {'x': 850, 'y': 275, 'width': 213, 'height': self._row_height}
+        self._items_location = {
+            'x': 450,
+            'y': 275,
+            'width': 300,
+            'height': self._row_height
+        }
+        self._prices_location = {
+            'x': 850,
+            'y': 275,
+            'width': 213,
+            'height': self._row_height
+        }
         self.data = []
         self._setup()
 
@@ -133,13 +170,13 @@ class Snap:
 
     def get_key_state(self, state):
         import ctypes
-        hllDll = ctypes.WinDLL("User32.dll")
+        hll_dll = ctypes.WinDLL("User32.dll")
         states = {
             'Scroll Lock': 0x91,
             'Num Lock': 0x90,
             'Caps Lock': 0x14,
         }
-        return hllDll.GetKeyState(states[state])
+        return hll_dll.GetKeyState(states[state])
 
     def image_noise_reduction(self, file):
         img = cv.imread(file, 0)
@@ -159,14 +196,16 @@ class Snap:
             b1, b2 = np.hsplit(bins, [i])  # weights
             # finding means and variances
             m1, m2 = np.sum(p1 * b1) / q1, np.sum(p2 * b2) / q2
-            v1, v2 = np.sum(((b1 - m1) ** 2) * p1) / q1, np.sum(((b2 - m2) ** 2) * p2) / q2
+            v1, v2 = np.sum(((b1 - m1)**2) * p1) / q1, np.sum(
+                ((b2 - m2)**2) * p2) / q2
             # calculates the minimization function
             fn = v1 * q1 + v2 * q2
             if fn < fn_min:
                 fn_min = fn
                 thresh = i
         # find otsu's threshold value with OpenCV function
-        ret, otsu = cv.threshold(blur, 0, 255, cv.THRESH_BINARY + cv.THRESH_OTSU)
+        ret, otsu = cv.threshold(blur, 0, 255,
+                                 cv.THRESH_BINARY + cv.THRESH_OTSU)
         print("{} {}".format(thresh, ret))
         return otsu
 
@@ -181,13 +220,15 @@ class Snap:
             x1 = self._items_location['x']
             x2 = x1 + self._items_location['width']
             y1 = a * self._items_location['height'] + self._items_location['y']
-            y2 = (a + 1) * self._items_location['height'] + self._items_location['y']
+            y2 = (a + 1
+                 ) * self._items_location['height'] + self._items_location['y']
             image = image_org.crop((x1, y1, x2, y2))
 
             x1 = self._prices_location['x']
             x2 = x1 + self._prices_location['width']
             y1 = a * self._prices_location['height'] + self._prices_location['y']
-            y2 = (a + 1) * self._prices_location['height'] + self._prices_location['y']
+            y2 = (a + 1) * self._prices_location[
+                'height'] + self._prices_location['y']
             image2 = image_org.crop((x1, y1, x2, y2))
 
             image = image.convert("L")
@@ -213,7 +254,8 @@ class Snap:
             # cv.imwrite(f'{self.tmp_dir}/cv_{a}_price_ret.png', ret)
 
             result = pytesseract.image_to_string(image, lang='eng', config='')
-            result2 = pytesseract.image_to_string(image2, config='-c tessedit_char_whitelist=0123456789@')
+            result2 = pytesseract.image_to_string(
+                image2, config='-c tessedit_char_whitelist=0123456789@')
 
             raw_data.append([result, result2])
         for entry in raw_data:
@@ -225,32 +267,44 @@ class Snap:
                     if len(already) == 0:
                         price = entry[1].strip().replace("@", "")
                         if row[0] == row[0].lower():
-                            print(f"[Skip] Possible trashy recognition: {row}: {price}")
+                            print(
+                                f"[Skip] Possible trashy recognition: {row}: {price}"
+                            )
                         elif price:
                             print(f"[Add] Found new entry: {row}: {price}")
                             price = int(price)
                             price = price / 10
-                            self.data.append({'name': row,
-                                              'price': price})
+                            self.data.append({'name': row, 'price': price})
                             winsound.Beep(760, 50)
                             new_entry = True
                         else:
-                            print(f"[Skip] Found new entry, couldn't recognize price: {row}")
+                            print(
+                                f"[Skip] Found new entry, couldn't recognize price: {row}"
+                            )
                             winsound.Beep(320, 50)
                     else:
                         winsound.Beep(320, 50)
                 elif row != '' and new_entry:
-                    bundle = row
-                    bundle = int(bundle.split("bundles of ")[1].split(" units")[0])
-                    self.data[-1]['bundle'] = bundle
+                    parsed_subtext = self._parse_subtext(row)
+                    if 'bundle' in parsed_subtext:
+                        self.data[-1]['bundle'] = parsed_subtext['bundle']
                     new_entry = False
+
+    def _parse_subtext(self, row):
+        parsed = {}
+        if "bundles of " in row:
+            parsed['bundle'] = int(
+                row.split("bundles of ")[1].split(" units")[0])
+        return parsed
 
     def run(self):
         winsound.Beep(640, 200)
         snap_key_state = self.get_key_state(self.key_snapshot)
         end_key_state = self.get_key_state(self.key_terminate)
         new_end_key_state = end_key_state
-        print(f'Awaiting command: [Screenshot: {self.key_snapshot}] [Save and quit: {self.key_terminate}]')
+        print(
+            f'Awaiting command: [Screenshot: {self.key_snapshot}] [Save and quit: {self.key_terminate}]'
+        )
         while end_key_state == new_end_key_state:
             new_snap_key_state = self.get_key_state(self.key_snapshot)
             new_end_key_state = self.get_key_state(self.key_terminate)
